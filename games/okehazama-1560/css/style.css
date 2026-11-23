@@ -2,30 +2,48 @@
 body {
   margin: 0;
   font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
-  background: #efe7d3;
-  color: #2b2418;
+  background: linear-gradient(180deg, #f3ecd9 0%, #ece0c2 100%);
+  color: #2e2517;
+  min-height: 100vh;
 }
 header {
-  padding: 10px 16px 4px;
+  padding: 12px 16px 6px;
 }
 header h1 {
   margin: 0;
-  font-size: 22px;
-  letter-spacing: 0.1em;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-size: 25px;
+  letter-spacing: 0.14em;
+  color: #3a2c14;
+}
+header h1::before {
+  content: "戦";
+  display: inline-block;
+  background: #b03a2e;
+  color: #fff8ea;
+  font-size: 15px;
+  letter-spacing: 0;
+  padding: 3px 5px;
+  border-radius: 3px;
+  margin-right: 10px;
+  vertical-align: 3px;
+  box-shadow: 0 1px 2px rgba(60, 40, 10, 0.35);
 }
 #status-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px 10px;
   font-size: 14px;
-  margin-top: 4px;
+  margin-top: 7px;
 }
 #status-bar span {
-  background: #fffdf6;
-  border: 1px solid #c9b98f;
+  background: #fffdf4;
+  border: 1px solid #c3ab72;
   border-radius: 6px;
   padding: 2px 10px;
+  box-shadow: 0 1px 2px rgba(90, 70, 30, 0.12);
 }
+#status-bar span:empty { display: none; }
 main {
   display: flex;
   flex-wrap: wrap;
@@ -40,9 +58,10 @@ main {
 canvas#map {
   width: 100%;
   height: auto;
-  background: #e7dcbb;
-  border: 1px solid #a68f5a;
-  border-radius: 8px;
+  background: #eadfc0;
+  border: 2px solid #8a6d3b;
+  border-radius: 6px;
+  box-shadow: 0 3px 10px rgba(80, 60, 20, 0.25);
   touch-action: manipulation;
 }
 #panel {
@@ -53,14 +72,17 @@ canvas#map {
   gap: 12px;
 }
 #panel section {
-  background: #fffdf6;
-  border: 1px solid #c9b98f;
+  background: #fffdf4;
+  border: 1px solid #c3ab72;
   border-radius: 8px;
   padding: 10px 12px;
+  box-shadow: 0 1px 3px rgba(90, 70, 30, 0.14);
 }
 #panel h2 {
   margin: 0 0 6px;
   font-size: 15px;
+  border-left: 4px solid #b03a2e;
+  padding-left: 8px;
 }
 #unit-detail { margin: 0; font-size: 14px; line-height: 1.6; }
 #controls { display: flex; gap: 8px; }
@@ -68,13 +90,18 @@ button {
   font-size: 15px;
   padding: 8px 16px;
   border-radius: 6px;
-  border: 1px solid #8a6d2f;
-  background: #b03a2e;
-  color: #fff;
+  border: 1px solid #7e2a1e;
+  background: linear-gradient(180deg, #c0452f, #a33327);
+  color: #fff8ea;
   cursor: pointer;
+  box-shadow: 0 2px 4px rgba(80, 50, 15, 0.25);
 }
-button#restart, button#again { background: #5d6d7e; }
-button:disabled { opacity: 0.45; cursor: default; }
+button:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(80, 50, 15, 0.25); }
+button#restart, button#again {
+  background: linear-gradient(180deg, #6d8091, #54687c);
+  border-color: #42536a;
+}
+button:disabled { opacity: 0.45; cursor: default; transform: none; }
 #legend ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 #legend li { margin: 3px 0; }
 .sw {
@@ -85,24 +112,28 @@ button:disabled { opacity: 0.45; cursor: default; }
   margin-right: 6px;
   vertical-align: -2px;
 }
-.sw.plain { background: #dcc98f; }
-.sw.road { background: #e8d9a8; }
+.sw.plain { background: #dbc98f; }
+.sw.road { background: #efdfae; }
 .sw.hill { background: #b08954; }
 .sw.woods { background: #6a8f5a; }
 .sw.ravine { background: #96865f; }
-.sw.fort { background: #8d7b68; }
+.sw.fort { background: #cbb98d; }
 .note { font-size: 12px; color: #6b5b35; line-height: 1.5; }
 #log {
   height: 180px;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.55;
+  background: #fbf7ea;
+  border-radius: 4px;
+  padding: 4px 6px;
 }
-#log p { margin: 0 0 4px; }
+#log p { margin: 0; padding: 2px 2px 3px; border-bottom: 1px dashed rgba(140, 115, 60, 0.25); }
+#log p:last-child { border-bottom: none; }
 #start-overlay, #end-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(43, 36, 24, 0.55);
+  background: rgba(43, 36, 24, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -111,15 +142,27 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 #end-overlay.hidden { display: none; }
 .card {
-  background: #fffdf6;
+  background: linear-gradient(180deg, #fffdf4, #f7efdb);
+  border: 2px solid #8a6d3b;
   border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(30, 22, 8, 0.45);
   max-width: 560px;
   width: 100%;
-  padding: 20px 22px;
+  padding: 22px 24px;
   max-height: 88vh;
   overflow-y: auto;
 }
-.card h2 { margin-top: 0; }
+.card h2 {
+  margin-top: 0;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid #c3ab72;
+  padding-bottom: 8px;
+}
+.card h3 {
+  font-size: 15px;
+  margin: 14px 0 4px;
+}
 .card label {
   display: block;
   font-size: 14px;
@@ -129,5 +172,11 @@ button:disabled { opacity: 0.45; cursor: default; }
   border: 1px solid #ddd0a8;
   border-radius: 6px;
   cursor: pointer;
+  background: rgba(255, 255, 255, 0.45);
 }
-.card button { margin-top: 10px; }
+.card label:hover { background: #f6ecd2; }
+.card label:has(input:checked) {
+  background: #f3e3bb;
+  border-color: #b03a2e;
+}
+.card button { margin-top: 12px; font-size: 16px; padding: 10px 22px; }

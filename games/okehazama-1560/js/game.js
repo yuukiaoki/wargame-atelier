@@ -195,6 +195,7 @@ function resolveCombat(attacker, defender) {
   const die = 1 + Math.floor(Math.random() * 6);
   const [aLoss, dLoss, dRet] = CRT[crtColumn(ratio)][die - 1];
   log(`⚔ ${attacker.name}（戦力${aStr}）→ ${defender.name}（防御${dStr}）比${ratio.toFixed(1)}:1、ダイス${die}：攻-${aLoss === 99 ? "壊滅" : aLoss} 守-${dLoss === 99 ? "壊滅" : dLoss}${dRet ? ` 守退却${dRet}` : ""}`);
+  fxCombat(defender, die); // 演出層への通知（見た目のみ。結果には影響しない）
   if (defender.side === "imagawa" && (defender.guard || defender.hq)) triggerAlarm("本陣が攻撃を受けた");
   applyLoss(defender, dLoss);
   if (defender.alive && dRet) retreat(defender, dRet, attacker);
@@ -399,7 +400,60 @@ function onTap(ev) {
   draw();
 }
 
-// ---------- 描画 ----------
+// ---------- 描画・演出（プレゼンテーション層） ----------
+// この節は見た目専用であり、ゲームの状態（state、ユニットの col/row/str 等）は
+// 一切変更しない。ユニットの表示位置は renderPos で補間し、論理位置へ滑らかに
+// 追随させる（移動・退却・AI の移動すべて同じ仕組みで滑って見える）。
+// 戦闘演出は resolveCombat から fxCombat() で通知を受けるだけにとどめる。
+const renderPos = new Map(); // unit.id -> {x, y} 表示用ピクセル座標
+const combatFx = [];         // {x, y, die, t0} 戦闘フラッシュ＋ダイス表示
+let rainDrops = null;        // 豪雨の雨粒 {x, y, len, sp}
+let paperTex = null;         // 和紙テクスチャ（オフスクリーンに一度だけ生成）
+
+// 戦闘演出の登録（resolveCombat から呼ばれる。ゲーム結果には影響しない）
+function fxCombat(defender, die) {
+  const { x, y } = center(defender.col, defender.row);
+  combatFx.push({ x, y, die, t0: performance.now() });
+}
+
+// ヘックス座標から決定的に 0..1 を返す（装飾の配置をフレーム間で安定させる）
+function hash2(c, r, k) {
+  let n = (c * 374761393 + r * 668265263 + (k || 0) * 1442695041) >>> 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177) >>> 0;
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+// 和紙テクスチャ（染みムラ＋紙の粒・繊維）をオフスクリーンに生成
+function getPaper(w, h) {
+  if (paperTex) return paperTex;
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#eadfc0";
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 26; i++) {
+    const x = hash2(i, 7, 1) * w, y = hash2(3, i, 2) * h, r = 90 + hash2(i, i, 3) * 190;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, i % 2 === 0 ? "rgba(150,120,60,0.055)" : "rgba(255,252,240,0.06)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (let i = 0; i < 2400; i++) {
+    const x = hash2(i, 11, 4) * w, y = hash2(13, i, 5) * h;
+    g.fillStyle = i % 3 === 0 ? "rgba(120,95,45,0.05)" : "rgba(255,255,246,0.05)";
+    g.fillRect(x, y, 1.4, 1.4);
+  }
+  g.strokeStyle = "rgba(130,105,55,0.045)";
+  g.lineWidth = 1;
+  for (let i = 0; i < 130; i++) {
+    const x = hash2(i, 21, 6) * w, y = hash2(23, i, 7) * h, len = 6 + hash2(i, i, 8) * 16;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + len, y + (hash2(i, 5, 9) - 0.5) * 2); g.stroke();
+  }
+  paperTex = cv;
+  return cv;
+}
+
 function hexPath(ctx, x, y, size) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -410,10 +464,411 @@ function hexPath(ctx, x, y, size) {
   }
   ctx.closePath();
 }
-function draw() {
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ---------- 地形の装飾 ----------
+function drawHillDecor(ctx, x, y, c, r) {
+  const mounds = [[-11, 4, 16], [10, 6, 13], [-1, -7, 11]];
+  for (let i = 0; i < mounds.length; i++) {
+    const px = x + mounds[i][0] + (hash2(c, r, 20 + i) - 0.5) * 4;
+    const py = y + mounds[i][1];
+    const w = mounds[i][2], h = w * 0.58;
+    ctx.beginPath();
+    ctx.moveTo(px - w / 2, py + h / 2);
+    ctx.quadraticCurveTo(px, py - h, px + w / 2, py + h / 2);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(133,95,45,0.55)";
+    ctx.fill();
+    // 右腹に陰影
+    ctx.beginPath();
+    ctx.moveTo(px, py - h * 0.82);
+    ctx.quadraticCurveTo(px + w * 0.18, py - h * 0.05, px + w / 2, py + h / 2);
+    ctx.lineTo(px, py + h / 2);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(96,64,28,0.35)";
+    ctx.fill();
+  }
+}
+function drawTree(ctx, x, y, s) {
+  ctx.fillStyle = "#5d4028";
+  ctx.fillRect(x - 1, y + 3 * s, 2, 3.4 * s);
+  ctx.beginPath();
+  ctx.moveTo(x, y - 6 * s);
+  ctx.lineTo(x - 4.6 * s, y + 1.6 * s);
+  ctx.lineTo(x + 4.6 * s, y + 1.6 * s);
+  ctx.closePath();
+  ctx.fillStyle = "#4c7038";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x, y - 3.4 * s);
+  ctx.lineTo(x - 3.8 * s, y + 3.6 * s);
+  ctx.lineTo(x + 3.8 * s, y + 3.6 * s);
+  ctx.closePath();
+  ctx.fillStyle = "#5d8146";
+  ctx.fill();
+}
+function drawWoodsDecor(ctx, x, y, c, r) {
+  const spots = [[-13, -5], [11, -10], [1, 8], [-4, -14]];
+  for (let i = 0; i < spots.length; i++) {
+    const px = x + spots[i][0] + (hash2(c, r, 30 + i) - 0.5) * 5;
+    const py = y + spots[i][1] + (hash2(c, r, 40 + i) - 0.5) * 4;
+    drawTree(ctx, px, py, 0.9 + hash2(c, r, 50 + i) * 0.35);
+  }
+}
+function drawRavineDecor(ctx, x, y, c, r) {
+  ctx.fillStyle = "rgba(70,55,28,0.18)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 3, 15, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(74,58,30,0.5)";
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 3; i++) {
+    const off = (i - 1) * 7 + (hash2(c, r, 60 + i) - 0.5) * 3;
+    ctx.beginPath();
+    ctx.moveTo(x - 15, y + off - 3);
+    ctx.quadraticCurveTo(x, y + off + 4, x + 15, y + off - 3);
+    ctx.stroke();
+  }
+}
+function drawPlainDecor(ctx, x, y, c, r) {
+  ctx.strokeStyle = "rgba(110,95,40,0.35)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    const px = x + (hash2(c, r, 70 + i) - 0.5) * 34;
+    const py = y + (hash2(c, r, 80 + i) - 0.5) * 26;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px - 1.6, py - 4);
+    ctx.moveTo(px + 1.8, py);
+    ctx.lineTo(px + 3, py - 3.6);
+    ctx.stroke();
+  }
+}
+function drawFortIcon(ctx, x, y, isCastle) {
+  ctx.save();
+  ctx.translate(x, y - 12);
+  if (isCastle) {
+    // 石垣
+    ctx.fillStyle = "#7d7466";
+    ctx.beginPath();
+    ctx.moveTo(-11, 8); ctx.lineTo(-8, 0); ctx.lineTo(8, 0); ctx.lineTo(11, 8);
+    ctx.closePath(); ctx.fill();
+    // 白壁
+    ctx.fillStyle = "#f2ecdc";
+    ctx.fillRect(-7, -7, 14, 7);
+    ctx.strokeStyle = "rgba(60,50,35,0.6)";
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(-7, -7, 14, 7);
+    // 屋根
+    ctx.fillStyle = "#4c4438";
+    ctx.beginPath();
+    ctx.moveTo(-10, -7); ctx.lineTo(0, -13); ctx.lineTo(10, -7);
+    ctx.closePath(); ctx.fill();
+  } else {
+    // 柵（丸太塀）
+    ctx.strokeStyle = "#5d4630";
+    ctx.lineWidth = 2;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * 5, 6);
+      ctx.lineTo(i * 5, -5 - (i === 0 ? 2 : 0));
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(12, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-12, 4); ctx.lineTo(12, 4); ctx.stroke();
+  }
+  ctx.restore();
+}
+// 街道：隣接する街道ヘックス同士を中心線で結び、滑らかな道として描く
+function drawRoads(ctx) {
+  const roadSet = new Set();
+  for (let r = 0; r < SCENARIO.rows; r++)
+    for (let c = 0; c < SCENARIO.cols; c++)
+      if (SCENARIO.map[r][c] === "r") roadSet.add(key(c, r));
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const [w, col] of [[11, "rgba(168,140,84,0.9)"], [7, "#efdfae"]]) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    for (const k of roadSet) {
+      const [c, r] = k.split(",").map(Number);
+      const a = center(c, r);
+      for (const [nc, nr] of neighbors(c, r)) {
+        if (!roadSet.has(key(nc, nr))) continue;
+        if (key(nc, nr) < k) continue; // 各区間は一度だけ描く
+        const b = center(nc, nr);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+    }
+    ctx.stroke();
+  }
+}
+
+// ---------- 家紋（大将格カウンター用、Canvas パスで描画） ----------
+function drawKamon(ctx, x, y, side) {
+  ctx.beginPath();
+  ctx.arc(x, y, 8.6, 0, Math.PI * 2);
+  ctx.fillStyle = "#f6efdb";
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(50,38,20,0.65)";
+  ctx.stroke();
+  ctx.fillStyle = side === "oda" ? "#a33327" : "#2e4053";
+  if (side === "oda") {
+    // 織田木瓜：上下左右に膨らむ四弁を楕円で近似
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 2 * i;
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(a) * 3.1, y + Math.sin(a) * 3.1, 3.9, 2.5, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+    ctx.fillStyle = "#f6efdb";
+    ctx.fill();
+  } else {
+    // 足利二つ引：丸に二本の横線
+    ctx.fillRect(x - 5.4, y - 3.1, 10.8, 2.1);
+    ctx.fillRect(x - 5.4, y + 1.1, 10.8, 2.1);
+  }
+}
+
+// ---------- ユニットカウンター ----------
+const COUNTER_W = 52, COUNTER_H = 42;
+function drawUnit(ctx, u, now) {
+  let rp = renderPos.get(u.id);
+  if (!rp) {
+    const ctr = center(u.col, u.row);
+    rp = { x: ctr.x, y: ctr.y };
+    renderPos.set(u.id, rp);
+  }
+  const x = rp.x, y = rp.y;
+  const done = state.phase === "oda" && u.side === "oda" && u.attacked;
+  ctx.save();
+  ctx.globalAlpha = done ? 0.55 : 1;
+  // 影
+  roundRectPath(ctx, x - COUNTER_W / 2 + 2, y - COUNTER_H / 2 + 3, COUNTER_W, COUNTER_H, 6);
+  ctx.fillStyle = "rgba(46,32,12,0.3)";
+  ctx.fill();
+  // 本体（縦グラデーション）
+  const grad = ctx.createLinearGradient(x, y - COUNTER_H / 2, x, y + COUNTER_H / 2);
+  if (u.side === "oda") { grad.addColorStop(0, "#c0452f"); grad.addColorStop(1, "#93301f"); }
+  else { grad.addColorStop(0, "#3a5878"); grad.addColorStop(1, "#26394f"); }
+  roundRectPath(ctx, x - COUNTER_W / 2, y - COUNTER_H / 2, COUNTER_W, COUNTER_H, 6);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = u.hq ? 3 : 1.6;
+  ctx.strokeStyle = u.hq ? "#f2c230" : "#f3ead2";
+  ctx.stroke();
+  // 選択中ハイライト（脈動する金の枠）
+  if (state.selected === u) {
+    const pad = 3.4 + Math.sin(now / 220) * 0.9;
+    roundRectPath(ctx, x - COUNTER_W / 2 - pad, y - COUNTER_H / 2 - pad,
+      COUNTER_W + pad * 2, COUNTER_H + pad * 2, 8);
+    ctx.strokeStyle = "#ffdf3a";
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+  }
+  // 家紋（大将格のみ、左上）
+  if (u.hq) drawKamon(ctx, x - COUNTER_W / 2 + 11, y - COUNTER_H / 2 + 11, u.side);
+  // 指揮官名
+  ctx.fillStyle = "#fff8ea";
+  ctx.font = "bold 12px 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(u.short, u.hq ? x + 5 : x, y - 8);
+  // 戦力・移動力
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(255,248,234,0.95)";
+  ctx.fillText("戦" + u.str, x - COUNTER_W / 2 + 6, y + 10);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,248,234,0.75)";
+  ctx.fillText("移" + u.mp, x + COUNTER_W / 2 - 6, y + 10);
+  ctx.textAlign = "center";
+  // ステップロス：彩度を落とし、ひび（欠け）を入れる
+  if (u.str < u.maxStr) {
+    const severity = 1 - u.str / u.maxStr;
+    roundRectPath(ctx, x - COUNTER_W / 2, y - COUNTER_H / 2, COUNTER_W, COUNTER_H, 6);
+    ctx.fillStyle = `rgba(52,48,44,${0.16 + severity * 0.3})`;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(28,20,12,0.6)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y - COUNTER_H / 2 + 1);
+    ctx.lineTo(x - 2, y - 6);
+    ctx.lineTo(x - 5, y + 1);
+    ctx.lineTo(x, y + 8);
+    ctx.stroke();
+    if (severity >= 0.5) {
+      ctx.beginPath();
+      ctx.moveTo(x + 12, y - COUNTER_H / 2 + 1);
+      ctx.lineTo(x + 9, y - 4);
+      ctx.lineTo(x + 13, y + 4);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- 本陣の焚火と煙 ----------
+function drawCampfire(ctx, now) {
+  const camp = state.units.find(u => u.id === "yoshimoto");
+  if (!camp || !camp.alive) return;
+  const rp = renderPos.get(camp.id);
+  const ctr = rp || center(camp.col, camp.row);
+  const fx0 = ctr.x + 22, fy = ctr.y - 14;
+  // 炎（ちらつき）
+  const fl = 1 + Math.sin(now / 90) * 0.16 + Math.sin(now / 37) * 0.07;
+  ctx.beginPath();
+  ctx.ellipse(fx0, fy - 3 * fl, 3.2, 5 * fl, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(232,110,30,0.85)";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(fx0, fy - 2 * fl, 1.7, 2.8 * fl, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(250,200,80,0.95)";
+  ctx.fill();
+  // 薪
+  ctx.strokeStyle = "#5d4028";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(fx0 - 4, fy + 2); ctx.lineTo(fx0 + 4, fy + 3); ctx.stroke();
+  // 煙（立ちのぼって風に流れる）
+  for (let i = 0; i < 10; i++) {
+    const age = ((now / 2600) + i / 10) % 1;
+    const sx = fx0 + Math.sin(age * 5 + i * 1.7) * 3.5 + age * 9;
+    const sy = fy - 8 - age * 36;
+    const sr = 2.6 + age * 8;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(105,100,95,${0.30 * (1 - age) * Math.min(1, age * 7)})`;
+    ctx.fill();
+  }
+}
+
+// ---------- 戦闘演出（フラッシュ＋ダイス） ----------
+function drawCombatFx(ctx, now) {
+  const pips = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  for (const f of combatFx) {
+    const age = now - f.t0;
+    if (age < 0 || age > 1400) continue;
+    if (age < 480) {
+      const p = age / 480;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 8 + p * 36, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,214,90,${0.85 * (1 - p)})`;
+      ctx.lineWidth = 3.5 * (1 - p) + 0.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 20 * (1 - p) + 4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,240,180,${0.35 * (1 - p)})`;
+      ctx.fill();
+    }
+    // ダイス（防御側ヘックスの上にポップ表示）
+    const pop = age < 130 ? 0.55 + 0.45 * (age / 130) : 1;
+    const fade = age > 1050 ? Math.max(0, 1 - (age - 1050) / 350) : 1;
+    const s = 30 * pop;
+    const dx = f.x - s / 2, dy = f.y - HEX_SIZE - s - 4;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    roundRectPath(ctx, dx, dy, s, s, 6 * pop);
+    ctx.fillStyle = "#fffdf4";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#4a3a20";
+    ctx.stroke();
+    ctx.fillStyle = f.die === 1 ? "#b03a2e" : "#33302a";
+    for (const p of pips[f.die]) {
+      const gx = (p % 3 - 1) * s * 0.26, gy = (Math.floor(p / 3) - 1) * s * 0.26;
+      ctx.beginPath();
+      ctx.arc(f.x + gx, dy + s / 2 + gy, s * 0.085, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ---------- 豪雨 ----------
+function ensureRain(w, h) {
+  if (rainDrops) return;
+  rainDrops = [];
+  for (let i = 0; i < 120; i++) {
+    rainDrops.push({ x: Math.random() * w, y: Math.random() * h, len: 9 + Math.random() * 8, sp: 340 + Math.random() * 260 });
+  }
+}
+function updateRain(dt, w, h) {
+  ensureRain(w, h);
+  const s = dt / 1000;
+  for (const d of rainDrops) {
+    d.y += d.sp * s;
+    d.x -= d.sp * 0.18 * s;
+    if (d.y > h + 12) { d.y = -12; d.x = Math.random() * (w + 40); }
+    if (d.x < -12) d.x = w + 8;
+  }
+}
+function drawRain(ctx, w, h) {
+  ctx.fillStyle = "rgba(70,90,120,0.13)";
+  ctx.fillRect(0, 0, w, h);
+  if (!rainDrops) return;
+  ctx.strokeStyle = "rgba(205,220,240,0.5)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  for (const d of rainDrops) {
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x - d.len * 0.18, d.y + d.len);
+  }
+  ctx.stroke();
+}
+
+// ---------- 演出の更新とアニメーションループ ----------
+function updateFx(dt, now) {
+  const canvas = document.getElementById("map");
+  // ユニット表示位置を論理位置へ補間（遠距離の瞬間移動はスナップ）
+  const f = 1 - Math.exp(-dt / 85);
+  for (const u of state.units) {
+    const ctr = center(u.col, u.row);
+    const rp = renderPos.get(u.id);
+    if (!rp) { renderPos.set(u.id, { x: ctr.x, y: ctr.y }); continue; }
+    const dx = ctr.x - rp.x, dy = ctr.y - rp.y;
+    if (Math.hypot(dx, dy) > HEX_SIZE * 4) { rp.x = ctr.x; rp.y = ctr.y; }
+    else { rp.x += dx * f; rp.y += dy * f; }
+  }
+  for (let i = combatFx.length - 1; i >= 0; i--) {
+    if (now - combatFx[i].t0 > 1450) combatFx.splice(i, 1);
+  }
+  if (isRainTurn() && state.phase !== "over") updateRain(dt, canvas.width, canvas.height);
+}
+let lastFrameT = 0;
+function animate(t) {
+  const dt = lastFrameT ? Math.min(64, t - lastFrameT) : 16;
+  lastFrameT = t;
+  updateFx(dt, t);
+  draw(t);
+  requestAnimationFrame(animate);
+}
+
+// ---------- 描画本体 ----------
+function draw(now) {
+  if (now === undefined) now = performance.now();
   const canvas = document.getElementById("map");
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  // 和紙背景
+  ctx.drawImage(getPaper(W, H), 0, 0);
   // 地形
   for (let r = 0; r < SCENARIO.rows; r++) {
     for (let c = 0; c < SCENARIO.cols; c++) {
@@ -422,74 +877,88 @@ function draw() {
       hexPath(ctx, x, y, HEX_SIZE - 1);
       ctx.fillStyle = t.color;
       ctx.fill();
+      // ヘックスごとの微妙な濃淡
+      const v = hash2(c, r, 90);
+      hexPath(ctx, x, y, HEX_SIZE - 1);
+      ctx.fillStyle = v > 0.5
+        ? `rgba(255,252,235,${(v - 0.5) * 0.10})`
+        : `rgba(105,80,35,${(0.5 - v) * 0.10})`;
+      ctx.fill();
       ctx.strokeStyle = "rgba(90,74,40,0.45)";
       ctx.lineWidth = 1;
       ctx.stroke();
       const ch = SCENARIO.map[r][c];
-      ctx.fillStyle = "rgba(60,48,20,0.75)";
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      if (ch === "f" || ch === "C") {
-        ctx.strokeStyle = "#4a3b20";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - 8, y - 18, 16, 13);
-      }
-      if (ch === "h") ctx.fillText("▲", x, y - 12);
-      if (ch === "w") ctx.fillText("🌲", x, y - 10);
-      if (ch === "v") ctx.fillText("谷", x, y - 12);
+      if (ch === "h") drawHillDecor(ctx, x, y, c, r);
+      else if (ch === "w") drawWoodsDecor(ctx, x, y, c, r);
+      else if (ch === "v") drawRavineDecor(ctx, x, y, c, r);
+      else if (ch === "f") drawFortIcon(ctx, x, y, false);
+      else if (ch === "C") drawFortIcon(ctx, x, y, true);
+      else if (ch === ".") drawPlainDecor(ctx, x, y, c, r);
     }
   }
+  // 街道（滑らかな線）
+  drawRoads(ctx);
   // 移動可能ヘックス
   if (state.selected && state.phase === "oda") {
     for (const k of state.reachable.keys()) {
       const [c, r] = k.split(",").map(Number);
       const { x, y } = center(c, r);
-      hexPath(ctx, x, y, HEX_SIZE - 3);
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      hexPath(ctx, x, y, HEX_SIZE - 2.5);
+      ctx.fillStyle = "rgba(255,244,196,0.42)";
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.strokeStyle = "rgba(150,112,36,0.9)";
+      ctx.lineWidth = 1.6;
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(130,98,32,0.55)";
+      ctx.fill();
     }
   }
-  // 地名
-  ctx.font = "11px sans-serif";
+  // 地名（明朝＋縁取りで可読性を上げる）
+  ctx.font = "bold 12px 'Hiragino Mincho ProN', 'Yu Mincho', serif";
   ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
   for (const lb of SCENARIO.labels) {
     const { x, y } = center(lb.col, lb.row);
-    ctx.fillStyle = "rgba(43,36,24,0.85)";
-    ctx.fillText(lb.text, x, y + HEX_SIZE - 6);
+    const ty = y + HEX_SIZE - 4;
+    ctx.lineWidth = 3.4;
+    ctx.strokeStyle = "rgba(246,239,219,0.92)";
+    ctx.strokeText(lb.text, x, ty);
+    ctx.fillStyle = "rgba(52,40,18,0.92)";
+    ctx.fillText(lb.text, x, ty);
+  }
+  // 攻撃可能な敵のハイライト（選択中ユニットに隣接する今川軍）
+  if (state.selected && state.phase === "oda" && state.selected.side === "oda" && !state.selected.attacked) {
+    for (const u of state.units) {
+      if (!u.alive || u.side !== "imagawa") continue;
+      if (distance(state.selected.col, state.selected.row, u.col, u.row) !== 1) continue;
+      const { x, y } = center(u.col, u.row);
+      ctx.beginPath();
+      ctx.arc(x, y, HEX_SIZE * 0.52 + Math.sin(now / 200) * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(200,40,25,0.85)";
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
   }
   // ユニット
   for (const u of state.units) {
     if (!u.alive) continue;
-    const { x, y } = center(u.col, u.row);
-    const done = state.phase === "oda" && u.side === "oda" && u.attacked;
-    ctx.globalAlpha = done ? 0.55 : 1;
-    ctx.beginPath();
-    ctx.arc(x, y, HEX_SIZE * 0.44, 0, Math.PI * 2);
-    ctx.fillStyle = u.side === "oda" ? "#b03a2e" : "#2e4053";
-    ctx.fill();
-    ctx.lineWidth = u.hq ? 3.5 : 2;
-    ctx.strokeStyle = u.hq ? "#f2c230" : "#fffdf6";
-    ctx.stroke();
-    if (state.selected === u) {
-      ctx.beginPath();
-      ctx.arc(x, y, HEX_SIZE * 0.56, 0, Math.PI * 2);
-      ctx.strokeStyle = "#ffdf3a";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    }
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 12px sans-serif";
-    ctx.fillText(u.short, x, y - 1);
-    ctx.font = "bold 13px sans-serif";
-    ctx.fillText(String(u.str), x, y + 14);
-    ctx.globalAlpha = 1;
+    drawUnit(ctx, u, now);
   }
-  // 豪雨オーバーレイ
+  // 本陣の焚火・煙
+  drawCampfire(ctx, now);
+  // 戦闘演出
+  drawCombatFx(ctx, now);
+  // 地図の枠（二重罫）
+  ctx.strokeStyle = "#6d5326";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(5, 5, W - 10, H - 10);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10.5, 10.5, W - 21, H - 21);
+  // 豪雨（ターン4・通説モードのみ。描画だけなので操作は妨げない）
   if (isRainTurn() && state.phase !== "over") {
-    ctx.fillStyle = "rgba(70,90,120,0.13)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawRain(ctx, W, H);
   }
 }
 
@@ -508,3 +977,4 @@ document.getElementById("start-game").addEventListener("click", () => {
   initGame();
 });
 initGame();
+requestAnimationFrame(animate);
