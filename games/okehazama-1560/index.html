@@ -15,6 +15,7 @@
     <span id="weather-info"></span>
     <span id="alarm-info"></span>
   </div>
+  <button id="sound-toggle" type="button">🔊 音オン</button>
 </header>
 
 <main>
@@ -60,6 +61,8 @@
     <h3>史観モード（論点の両論をルール化）</h3>
     <label><input type="radio" name="mode" value="rain" checked> 通説モード — 豪雨の奇襲：第4ターンに豪雨。今川本陣は油断状態で始まり、豪雨のターン今川軍の防御が大きく落ちる（『甫庵信長記』系の物語に近い）</label>
     <label><input type="radio" name="mode" value="frontal"> 正面攻撃モード — 豪雨なし。本陣は最初から警戒しているが、織田軍は太子ヶ根側から攻撃すると戦力+1（藤本正行らの正面攻撃説に近い）</label>
+    <h3>音</h3>
+    <label><input type="checkbox" id="sound-check" checked> 効果音・雨音を出す（開始後も画面上の「🔊 音オン／🔇 音オフ」ボタンで切り替えできます）</label>
     <button id="start-game" type="button">ゲーム開始</button>
     <p class="note">典拠と論点は README の設計ノートに記載。ユニット編成・戦力値はゲーム上の抽象化です。</p>
   </div>
@@ -74,6 +77,7 @@
 </div>
 
 <script src="js/scenario.js"></script>
+<script src="js/sound.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

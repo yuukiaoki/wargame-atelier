@@ -216,6 +216,7 @@ function triggerAlarm(reason) {
   if (!state.alarmed) {
     state.alarmed = true;
     log(`⚠ 今川本陣が警戒態勢に入った（${reason}）。`);
+    sfx("alarm");
     updateStatus();
   }
 }
@@ -258,6 +259,7 @@ function endGame(winner, baseTitle, text) {
   document.getElementById("end-title").textContent = title;
   document.getElementById("end-text").textContent = text;
   document.getElementById("end-overlay").classList.remove("hidden");
+  sfx(winner === state.player ? "win" : "lose");
   log(`■ ${title}：${text}`);
   updateStatus();
   draw();
@@ -271,7 +273,11 @@ function aiTakeTurn(side, done) {
     if (state.phase === "over") { done(); return; }
     if (i >= actors.length) { done(); return; }
     const u = actors[i++];
-    if (u.alive) aiActivate(u);
+    if (u.alive) {
+      const pc = u.col, pr = u.row;
+      aiActivate(u);
+      if (u.alive && (u.col !== pc || u.row !== pr)) sfx("step"); // AIの移動には弱い足音
+    }
     draw();
     if (checkVictory()) { done(); return; }
     setTimeout(step, 350);
@@ -397,6 +403,7 @@ function aiActivateOda(u) {
 // プレイヤーの軍は入力待ち、AIの軍は startPhase が自動で動かす。
 function startPhase() {
   log(`— ターン${state.turn} ${sideLabel(state.phase)}フェイズ${state.phase === state.player ? "（あなた）" : "（AI）"} —`);
+  sfx("phase");
   if (state.phase === state.player) {
     state.busy = false;
     updateStatus();
@@ -488,6 +495,7 @@ function onTap(ev) {
   }
   if (sel && !clicked && state.reachable.has(key(c, r)) && !sel.moved && !sel.attacked) {
     sel.col = c; sel.row = r; sel.moved = true;
+    sfx("move");
     state.reachable = new Map();
     showUnitInfo(sel);
     draw();
@@ -495,6 +503,7 @@ function onTap(ev) {
   }
   if (clicked && clicked.side === state.player) {
     state.selected = clicked;
+    sfx("tap");
     state.reachable = (!clicked.moved && !clicked.attacked) ? computeReachable(clicked) : new Map();
     showUnitInfo(clicked);
   } else {
@@ -515,10 +524,19 @@ const combatFx = [];         // {x, y, die, t0} 戦闘フラッシュ＋ダイ�
 let rainDrops = null;        // 豪雨の雨粒 {x, y, len, sp}
 let paperTex = null;         // 和紙テクスチャ（オフスクリーンに一度だけ生成）
 
+// 効果音への通知（sound.js の Snd）。音響まわりの失敗がゲームに影響しないよう、
+// ここで全て握りつぶす。sound.js が読み込まれていなくても安全。
+function sfx(name, arg) {
+  try {
+    if (typeof Snd !== "undefined" && Snd && typeof Snd[name] === "function") Snd[name](arg);
+  } catch (e) { /* 音響の失敗は無視する */ }
+}
+
 // 戦闘演出の登録（resolveCombat から呼ばれる。ゲーム結果には影響しない）
 function fxCombat(defender, die) {
   const { x, y } = center(defender.col, defender.row);
   combatFx.push({ x, y, die, t0: performance.now() });
+  sfx("combat");
 }
 
 // ヘックス座標から決定的に 0..1 を返す（装飾の配置をフレーム間で安定させる）
@@ -955,6 +973,7 @@ function updateFx(dt, now) {
     if (now - combatFx[i].t0 > 1450) combatFx.splice(i, 1);
   }
   if (isRainTurn() && state.phase !== "over") updateRain(dt, canvas.width, canvas.height);
+  sfx("syncRain", isRainTurn() && state.phase !== "over"); // 雨音を雨アニメーションと連動
 }
 let lastFrameT = 0;
 function animate(t) {
@@ -1068,21 +1087,53 @@ function draw(now) {
 }
 
 // ---------- 起動 ----------
+// サウンドUI（ヘッダのトグルボタンと開始オーバーレイのチェックボックスを同期させる）
+function refreshSoundUi() {
+  let on = true;
+  try { if (typeof Snd !== "undefined" && Snd) on = Snd.isOn(); } catch (e) { /* 既定はオン表示 */ }
+  const btn = document.getElementById("sound-toggle");
+  if (btn) btn.textContent = on ? "🔊 音オン" : "🔇 音オフ";
+  const chk = document.getElementById("sound-check");
+  if (chk) chk.checked = on;
+}
 document.getElementById("map").addEventListener("click", onTap);
 document.getElementById("end-phase").addEventListener("click", endPhase);
-document.getElementById("restart").addEventListener("click", () => { initGame(); showUnitInfo(null); kickoff(); });
+document.getElementById("restart").addEventListener("click", () => { sfx("tap"); initGame(); showUnitInfo(null); kickoff(); });
 document.getElementById("again").addEventListener("click", () => {
+  sfx("tap");
   document.getElementById("end-overlay").classList.add("hidden");
   initGame();
   showUnitInfo(null);
   kickoff();
 });
+document.getElementById("sound-toggle").addEventListener("click", () => {
+  try {
+    if (typeof Snd !== "undefined" && Snd) { Snd.unlock(); Snd.toggle(); }
+  } catch (e) { /* 音響の失敗は無視する */ }
+  refreshSoundUi();
+  sfx("tap"); // オンにしたときだけ鳴る（オフにしたときは無音）
+});
+document.getElementById("sound-check").addEventListener("change", (ev) => {
+  try { if (typeof Snd !== "undefined" && Snd) Snd.setOn(ev.target.checked); } catch (e) { /* 音響の失敗は無視する */ }
+  refreshSoundUi();
+});
 document.getElementById("start-game").addEventListener("click", () => {
   state.mode = document.querySelector('input[name="mode"]:checked').value;
   state.player = document.querySelector('input[name="side"]:checked').value;
+  // 音のオン／オフを開始オーバーレイのチェックに合わせ、この操作で AudioContext を起こす
+  try {
+    if (typeof Snd !== "undefined" && Snd) {
+      const chk = document.getElementById("sound-check");
+      if (chk) Snd.setOn(chk.checked);
+      Snd.unlock();
+    }
+  } catch (e) { /* 音響の失敗は無視する */ }
+  sfx("tap");
+  refreshSoundUi();
   document.getElementById("start-overlay").style.display = "none";
   initGame();
   kickoff();
 });
+refreshSoundUi();
 initGame();
 requestAnimationFrame(animate);
