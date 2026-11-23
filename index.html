@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ウォーゲーム工房 — Wargame Atelier</title>
+<style>
+  body { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; background: #efe7d3; color: #2b2418; }
+  header { padding: 28px 20px 6px; max-width: 760px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: 0.08em; }
+  header p { color: #6b5b35; line-height: 1.7; }
+  main { max-width: 760px; margin: 0 auto; padding: 8px 20px 36px; display: flex; flex-direction: column; gap: 14px; }
+  .game { background: #fffdf6; border: 1px solid #c9b98f; border-radius: 10px; padding: 16px 18px; }
+  .game h2 { margin: 0 0 6px; font-size: 19px; }
+  .game p { margin: 0 0 10px; line-height: 1.7; font-size: 14px; }
+  .tag { display: inline-block; font-size: 12px; background: #b03a2e; color: #fff; border-radius: 4px; padding: 1px 8px; margin-right: 6px; }
+  .tag.plan { background: #8a94a6; }
+  a.play { display: inline-block; background: #b03a2e; color: #fff; text-decoration: none; padding: 8px 18px; border-radius: 6px; font-size: 15px; }
+  .planned { opacity: 0.75; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ウォーゲーム工房</h1>
+  <p>史料から戦術モデルを抽出してヘックスグリッドで再現する、ブラウザで遊べるウォーゲームの工房です。各ゲームは典拠と論点を設計ノートに明記します。</p>
+</header>
+<main>
+  <section class="game">
+    <h2><span class="tag">試作・プレイ可</span>桶狭間 1560</h2>
+    <p>永禄3年、織田信長が今川義元の本陣を狙う。HEX＋戦闘結果表（CRT）の戦術級ゲーム。今川本陣の「油断／警戒」と、奇襲説・正面攻撃説の両論をモード化したのが特徴。</p>
+    <a class="play" href="games/okehazama-1560/">プレイする</a>
+  </section>
+  <section class="game planned">
+    <h2><span class="tag plan">構想中</span>ポワティエ 1356</h2>
+    <p>黒太子エドワードの対フランス戦。ダン＝パティソン『黒太子』を筆頭素材に想定。底本のデジタル全文の確保から着手予定。</p>
+  </section>
+  <section class="game planned">
+    <h2><span class="tag plan">構想中</span>ケーニヒグレーツ 1866</h2>
+    <p>普墺戦争の決戦。Wagner『Campaign of Königgrätz』の全訳があり典拠は厚いが、規模が大きいため3本目以降の候補。</p>
+  </section>
+</main>
+</body>
+</html>

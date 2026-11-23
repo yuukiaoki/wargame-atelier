@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>桶狭間 1560 — ヘックスウォーゲーム試作</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>桶狭間 1560</h1>
+  <div id="status-bar">
+    <span id="turn-info">ターン 1 / 8</span>
+    <span id="phase-info">織田軍フェイズ</span>
+    <span id="weather-info"></span>
+    <span id="alarm-info"></span>
+  </div>
+</header>
+
+<main>
+  <div id="map-wrap">
+    <canvas id="map" width="920" height="640"></canvas>
+  </div>
+  <aside id="panel">
+    <section id="unit-info">
+      <h2>ユニット情報</h2>
+      <p id="unit-detail">ユニットをタップすると情報が表示されます。<br>自軍ユニットを選ぶと移動できるヘックスが光ります。敵に隣接していれば、その敵をタップして攻撃できます。</p>
+    </section>
+    <section id="controls">
+      <button id="end-phase" type="button">フェイズ終了</button>
+      <button id="restart" type="button">最初から</button>
+    </section>
+    <section id="legend">
+      <h2>地形</h2>
+      <ul>
+        <li><span class="sw plain"></span>平地</li>
+        <li><span class="sw road"></span>街道</li>
+        <li><span class="sw hill"></span>丘陵</li>
+        <li><span class="sw woods"></span>林</li>
+        <li><span class="sw ravine"></span>狭間（谷）</li>
+        <li><span class="sw fort"></span>砦・城</li>
+      </ul>
+      <p class="note">丘陵・林・狭間・砦/城は防御側に戦力+1。街道は移動コスト最小。</p>
+    </section>
+    <section id="log-wrap">
+      <h2>戦闘ログ</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+
+<div id="start-overlay">
+  <div class="card">
+    <h2>桶狭間 1560 — 試作版</h2>
+    <p>永禄3年5月19日（1560年6月12日）。織田信長は善照寺砦に兵を結集し、田楽狭間に本陣を置く今川義元を狙う。今川軍は総勢では圧倒するが各地に分散しており、本陣を守る兵は多くない。</p>
+    <p><strong>目的</strong>：織田軍（プレイヤー）は8ターン以内に今川義元本陣ユニットを壊滅させれば大勝利。今川軍（AI）は義元を守り切るか、信長本隊を壊滅させれば勝利。</p>
+    <h3>史観モード（論点の両論をルール化）</h3>
+    <label><input type="radio" name="mode" value="rain" checked> 通説モード — 豪雨の奇襲：第4ターンに豪雨。今川本陣は油断状態で始まり、豪雨のターン今川軍の防御が大きく落ちる（『甫庵信長記』系の物語に近い）</label>
+    <label><input type="radio" name="mode" value="frontal"> 正面攻撃モード — 豪雨なし。本陣は最初から警戒しているが、織田軍は太子ヶ根側から攻撃すると戦力+1（藤本正行らの正面攻撃説に近い）</label>
+    <button id="start-game" type="button">ゲーム開始</button>
+    <p class="note">典拠と論点は README の設計ノートに記載。ユニット編成・戦力値はゲーム上の抽象化です。</p>
+  </div>
+</div>
+
+<div id="end-overlay" class="hidden">
+  <div class="card">
+    <h2 id="end-title"></h2>
+    <p id="end-text"></p>
+    <button id="again" type="button">もう一度</button>
+  </div>
+</div>
+
+<script src="js/scenario.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
