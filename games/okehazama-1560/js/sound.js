@@ -21,7 +21,7 @@
   var rainGain = null; // 雨音ループのゲイン（ノードは一度だけ作る）
   var rainWanted = false;
 
-  var MASTER_VOL = 0.55; // 全体の音量は控えめに統一
+  var MASTER_VOL = 0.85; // スマホのスピーカーでも聞き取れる水準に（2026-11-24 引き上げ）
 
   // ---------- 基盤 ----------
   function ensureCtx() {
@@ -42,12 +42,27 @@
   // ユーザー操作のタイミングで呼ぶ。生成と resume、雨ノードの用意まで行う。
   function unlock() {
     try {
+      // iOS 17+: オーディオセッションを「再生（playback）」にすると、
+      // マナーモード（消音スイッチ）でも Web Audio が鳴るようになる。
+      try {
+        if (typeof navigator !== "undefined" && navigator.audioSession) {
+          navigator.audioSession.type = "playback";
+        }
+      } catch (e) { /* 非対応環境では何もしない */ }
       var c = ensureCtx();
       if (!c) return;
       if (c.state === "suspended") {
         var p = c.resume();
         if (p && typeof p.catch === "function") p.catch(function () {});
       }
+      // 古い iOS 向けの確実な解放策：ジェスチャの中で無音バッファを一度再生する。
+      try {
+        var silent = c.createBuffer(1, 1, c.sampleRate);
+        var ss = c.createBufferSource();
+        ss.buffer = silent;
+        ss.connect(c.destination);
+        ss.start(0);
+      } catch (e) { /* 失敗しても続行 */ }
       ensureRain();
       applyRain();
     } catch (e) { /* 音響の失敗は無視する */ }
