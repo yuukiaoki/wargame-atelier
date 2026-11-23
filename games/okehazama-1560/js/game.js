@@ -5,6 +5,7 @@
 // - 戦闘は戦力比によるCRT（戦闘結果表）を1d6で解決。損害（戦力減少）と退却。
 // - 今川本陣は「油断」状態で開始し、織田軍の接近・戦闘・時間経過で「警戒」に移る。
 // - 通説モードでは第4ターンに豪雨。今川軍の防御が落ち、警戒判定も鈍る。
+// - 開始時に指揮する軍（織田／今川）を選択可能。選ばなかった側はAIが指揮する。
 "use strict";
 
 const HEX_SIZE = 34;
@@ -13,6 +14,7 @@ const SQRT3 = Math.sqrt(3);
 
 const state = {
   mode: "rain",
+  player: "oda", // プレイヤーが指揮する軍（もう一方はAI）
   turn: 1,
   phase: "oda", // "oda" | "imagawa" | "over"
   units: [],
@@ -59,6 +61,7 @@ function unitAt(col, row) {
   return state.units.find(u => u.alive && u.col === col && u.row === row) || null;
 }
 function enemyOf(unit) { return unit.side === "oda" ? "imagawa" : "oda"; }
+function sideLabel(side) { return side === "oda" ? "織田軍" : "今川軍"; }
 function inEnemyZoc(col, row, side) {
   const foe = side === "oda" ? "imagawa" : "oda";
   return state.units.some(u => u.alive && u.side === foe && distance(u.col, u.row, col, row) === 1);
@@ -80,6 +83,9 @@ function initGame() {
   log(`ゲーム開始（${state.mode === "rain" ? "通説モード：豪雨の奇襲" : "正面攻撃モード"}）。`);
   log("織田軍は善照寺〜太子ヶ根に結集。今川本陣は田楽狭間にあり、油断している。");
   if (state.mode === "frontal") log("正面攻撃モード：今川本陣は最初から警戒している。織田軍は丘陵から攻撃すると戦力+1。");
+  log(state.player === "oda"
+    ? "あなたは織田軍を指揮する。今川義元本陣を討ち取れば勝利。"
+    : "あなたは今川軍を指揮する。序盤、本陣は油断している。織田軍（AI）が本陣を狙って接近してくる。本陣を守り切れ。");
   updateStatus();
   draw();
 }
@@ -97,12 +103,13 @@ function isRainTurn() { return state.mode === "rain" && state.turn === 4; }
 function updateStatus() {
   document.getElementById("turn-info").textContent = `ターン ${Math.min(state.turn, SCENARIO.maxTurns)} / ${SCENARIO.maxTurns}`;
   document.getElementById("phase-info").textContent =
-    state.phase === "oda" ? "織田軍フェイズ" : state.phase === "imagawa" ? "今川軍フェイズ" : "終了";
+    state.phase === "over" ? "終了" :
+    `${sideLabel(state.phase)}フェイズ（${state.phase === state.player ? "あなた" : "AI"}）`;
   document.getElementById("weather-info").textContent = isRainTurn() ? "☔ 豪雨" : "";
   const camp = state.units.find(u => u.id === "yoshimoto");
   document.getElementById("alarm-info").textContent =
     camp && camp.alive ? (state.alarmed ? "本陣：警戒" : "本陣：油断") : "";
-  document.getElementById("end-phase").disabled = state.busy || state.phase !== "oda";
+  document.getElementById("end-phase").disabled = state.busy || state.phase !== state.player;
 }
 
 // ---------- 戦力計算 ----------
@@ -174,7 +181,7 @@ function applyLoss(unit, loss) {
   else { unit.str -= loss; }
   if (unit.str <= 0) {
     unit.alive = false;
-    log(`　${unit.name} は壊滅した。`);
+    log(`　${sideLabel(unit.side)}の${unit.name} は壊滅した。`);
   }
 }
 function retreat(unit, hexes, attacker) {
@@ -184,7 +191,7 @@ function retreat(unit, hexes, attacker) {
       .sort((a, b) => distance(b[0], b[1], attacker.col, attacker.row) - distance(a[0], a[1], attacker.col, attacker.row));
     const safe = options.filter(([c, r]) => !inEnemyZoc(c, r, unit.side));
     const pick = (safe.length ? safe : options)[0];
-    if (!pick) { applyLoss(unit, 1); log(`　${unit.name} は退却できず追加損害。`); continue; }
+    if (!pick) { applyLoss(unit, 1); log(`　${sideLabel(unit.side)}の${unit.name} は退却できず追加損害。`); continue; }
     unit.col = pick[0]; unit.row = pick[1];
   }
 }
@@ -194,7 +201,7 @@ function resolveCombat(attacker, defender) {
   const ratio = aStr / dStr;
   const die = 1 + Math.floor(Math.random() * 6);
   const [aLoss, dLoss, dRet] = CRT[crtColumn(ratio)][die - 1];
-  log(`⚔ ${attacker.name}（戦力${aStr}）→ ${defender.name}（防御${dStr}）比${ratio.toFixed(1)}:1、ダイス${die}：攻-${aLoss === 99 ? "壊滅" : aLoss} 守-${dLoss === 99 ? "壊滅" : dLoss}${dRet ? ` 守退却${dRet}` : ""}`);
+  log(`⚔ ${sideLabel(attacker.side)}・${attacker.name}（戦力${aStr}）→ ${sideLabel(defender.side)}・${defender.name}（防御${dStr}）比${ratio.toFixed(1)}:1、ダイス${die}：攻-${aLoss === 99 ? "壊滅" : aLoss} 守-${dLoss === 99 ? "壊滅" : dLoss}${dRet ? ` 守退却${dRet}` : ""}`);
   fxCombat(defender, die); // 演出層への通知（見た目のみ。結果には影響しない）
   if (defender.side === "imagawa" && (defender.guard || defender.hq)) triggerAlarm("本陣が攻撃を受けた");
   applyLoss(defender, dLoss);
@@ -227,12 +234,12 @@ function checkVictory() {
   const yoshi = state.units.find(u => u.id === "yoshimoto");
   const nobu = state.units.find(u => u.id === "nobunaga");
   if (yoshi && !yoshi.alive) {
-    endGame(true, state.turn <= 5 ? "織田軍の大勝利" : "織田軍の勝利",
+    endGame("oda", state.turn <= 5 ? "織田軍の大勝利" : "織田軍の勝利",
       `今川義元は討ち取られた（ターン${state.turn}）。今川軍は総崩れとなり、歴史通りの結末となった。`);
     return true;
   }
   if (nobu && !nobu.alive) {
-    endGame(false, "今川軍の勝利", "織田信長本隊が壊滅した。尾張の小大名の挑戦はここで潰えた。");
+    endGame("imagawa", "今川軍の勝利", "織田信長本隊が壊滅した。尾張の小大名の挑戦はここで潰えた。");
     return true;
   }
   return false;
@@ -240,13 +247,14 @@ function checkVictory() {
 function judgeAtEnd() {
   const yoshi = state.units.find(u => u.id === "yoshimoto");
   if (yoshi && yoshi.alive && yoshi.str * 2 <= yoshi.maxStr) {
-    endGame(true, "織田軍の小勝利", "8ターン終了。本陣は壊滅的な打撃を受けたが、義元自身は脱出した。今川軍の尾張侵攻は頓挫した。");
+    endGame("oda", "織田軍の小勝利", "8ターン終了。本陣は壊滅的な打撃を受けたが、義元自身は脱出した。今川軍の尾張侵攻は頓挫した。");
   } else {
-    endGame(false, "今川軍の勝利", "8ターン終了。今川義元は本陣を守り切った。信長の賭けは実らなかった。");
+    endGame("imagawa", "今川軍の勝利", "8ターン終了。今川義元は本陣を守り切った。信長の賭けは実らなかった。");
   }
 }
-function endGame(odaWon, title, text) {
+function endGame(winner, baseTitle, text) {
   state.phase = "over";
+  const title = `${winner === state.player ? "勝利" : "敗北"} ― ${baseTitle}`;
   document.getElementById("end-title").textContent = title;
   document.getElementById("end-text").textContent = text;
   document.getElementById("end-overlay").classList.remove("hidden");
@@ -255,9 +263,9 @@ function endGame(odaWon, title, text) {
   draw();
 }
 
-// ---------- 今川軍AI ----------
-function aiTakeTurn(done) {
-  const actors = state.units.filter(u => u.alive && u.side === "imagawa");
+// ---------- AI（両軍共用ドライバ） ----------
+function aiTakeTurn(side, done) {
+  const actors = state.units.filter(u => u.alive && u.side === side);
   let i = 0;
   const step = () => {
     if (state.phase === "over") { done(); return; }
@@ -271,13 +279,32 @@ function aiTakeTurn(done) {
   step();
 }
 function bestAttackTarget(u) {
-  const foes = state.units.filter(v => v.alive && v.side === "oda" &&
+  const foeSide = enemyOf(u);
+  const foes = state.units.filter(v => v.alive && v.side === foeSide &&
     distance(u.col, u.row, v.col, v.row) === 1);
   if (!foes.length) return null;
+  // 織田軍は隣接していれば義元本陣を最優先で狙う
+  if (u.side === "oda") {
+    const hq = foes.find(v => v.hq);
+    if (hq) return hq;
+  }
   foes.sort((a, b) => defenseStrength(a) - defenseStrength(b));
   return foes[0];
 }
+function nearestFoe(u) {
+  const foeSide = enemyOf(u);
+  const foes = state.units.filter(v => v.alive && v.side === foeSide);
+  if (!foes.length) return null;
+  foes.sort((a, b) => distance(u.col, u.row, a.col, a.row) - distance(u.col, u.row, b.col, b.row));
+  return foes[0];
+}
 function aiActivate(u) {
+  if (u.side === "imagawa") aiActivateImagawa(u);
+  else aiActivateOda(u);
+}
+
+// ---------- 今川軍AI（従来ロジック） ----------
+function aiActivateImagawa(u) {
   // 本陣・警固は動かない（攻撃のみ）
   if (!u.guard && !u.hq) {
     const target = nearestFoe(u);
@@ -301,37 +328,115 @@ function aiActivate(u) {
     if (ratio >= 0.9) { resolveCombat(u, foe); return; }
   }
 }
-function nearestFoe(u) {
-  const foes = state.units.filter(v => v.alive && v.side === "oda");
-  if (!foes.length) return null;
-  foes.sort((a, b) => distance(u.col, u.row, a.col, a.row) - distance(u.col, u.row, b.col, b.row));
-  return foes[0];
+
+// ---------- 織田軍AI ----------
+// 方針: 全軍で今川本陣（義元）を主目標に、街道・丘陵側から前進して隣接すれば攻撃する。
+// 本陣関係（義元・警固）以外との戦闘にはこだわらず、本陣への前進を優先する。
+// 通説モードでは豪雨（ターン4）に合わせて攻勢を強める: ターン1〜3は本陣から
+// 3ヘックスの線で待機し（油断を保ち）、本陣関係は叩かない。豪雨のターンに一気に詰める。
+// 正面攻撃モードでは最初から着実に圧迫する。信長本隊は敗北条件そのものなので、
+// 不利な戦闘と包囲される位置を避ける。善照寺守備隊は砦に留まる。
+function aiActivateOda(u) {
+  if (u.id === "zenshoji") { // 守備隊は動かない（攻撃のみ）
+    const foe = bestAttackTarget(u);
+    if (foe && attackStrength(u) / defenseStrength(foe) >= 0.9) resolveCombat(u, foe);
+    return;
+  }
+  const camp = state.units.find(v => v.id === "yoshimoto");
+  const campAlive = !!(camp && camp.alive);
+  const rainWait = state.mode === "rain" && state.turn < 4 && campAlive;
+  const foeNow = bestAttackTarget(u);
+  if (!(foeNow && (foeNow.guard || foeNow.hq))) {
+    // 本陣関係に隣接していない場合は、本陣方面への前進を優先する
+    // （本隊が半減したら善照寺方面へ退く）
+    const retreating = u.hq && u.str * 2 <= u.maxStr;
+    const goal = retreating ? { col: 1, row: 1 } : (campAlive ? camp : nearestFoe(u));
+    if (goal) {
+      const campUnits = state.units.filter(v => v.alive && v.side === "imagawa" && (v.guard || v.hq));
+      const reach = computeReachable(u);
+      const scoreOf = (c, r) => {
+        const dGoal = distance(c, r, goal.col, goal.row);
+        const t = terrainAt(c, r);
+        let s = t.cost - t.def * 2; // 街道（低コスト）を進み、防御の利く地形を好む
+        if (rainWait && !retreating) {
+          let dCamp = Infinity;
+          for (const v of campUnits) dCamp = Math.min(dCamp, distance(c, r, v.col, v.row));
+          s += dGoal * 10;
+          if (dCamp < 3) s += (3 - dCamp) * 1000; // 待機線の内側には入らない
+        } else {
+          s += dGoal * 100;
+        }
+        if (dGoal > 1 && inEnemyZoc(c, r, u.side)) s += 15; // 攻撃位置以外では敵ZOCに留まらない
+        // 敵に囲まれる位置を避ける（本隊は強めに）
+        const adj = state.units.filter(v => v.alive && v.side === "imagawa" &&
+          distance(c, r, v.col, v.row) === 1).length;
+        s += adj * (u.hq ? 45 : 12);
+        return s;
+      };
+      let best = null, bestScore = Infinity;
+      const curScore = scoreOf(u.col, u.row);
+      for (const k of reach.keys()) {
+        const [c, r] = k.split(",").map(Number);
+        const s = scoreOf(c, r);
+        if (s < bestScore) { bestScore = s; best = [c, r]; }
+      }
+      if (best && bestScore < curScore) { u.col = best[0]; u.row = best[1]; }
+    }
+  }
+  const foe = bestAttackTarget(u);
+  if (foe) {
+    if (rainWait && (foe.guard || foe.hq)) return; // 豪雨までは本陣関係を叩かない
+    const ratio = attackStrength(u) / defenseStrength(foe);
+    const need = (u.hq && !foe.hq) ? 1.3 : 0.9; // 本隊は雑兵戦で消耗しない
+    if (ratio >= need) resolveCombat(u, foe);
+  }
 }
 
 // ---------- ターン進行 ----------
-function endPhase() {
-  if (state.phase !== "oda" || state.busy) return;
-  state.selected = null;
-  state.reachable = new Map();
-  state.phase = "imagawa";
-  state.busy = true;
-  checkAlarm();
-  updateStatus();
-  draw();
-  log(`— ターン${state.turn} 今川軍フェイズ —`);
-  aiTakeTurn(() => {
+// 1ターンは織田フェイズ → 今川フェイズ。今川フェイズの終了でターンが進む。
+// プレイヤーの軍は入力待ち、AIの軍は startPhase が自動で動かす。
+function startPhase() {
+  log(`— ターン${state.turn} ${sideLabel(state.phase)}フェイズ${state.phase === state.player ? "（あなた）" : "（AI）"} —`);
+  if (state.phase === state.player) {
     state.busy = false;
-    if (state.phase === "over") { updateStatus(); draw(); return; }
-    if (state.turn >= SCENARIO.maxTurns) { judgeAtEnd(); return; }
-    state.turn++;
-    state.phase = "oda";
-    for (const u of state.units) { u.moved = false; u.attacked = false; }
-    if (isRainTurn()) log("☔ 激しい豪雨が戦場を叩く。今川軍は混乱している。");
-    checkAlarm();
-    log(`— ターン${state.turn} 織田軍フェイズ —`);
     updateStatus();
     draw();
+    return;
+  }
+  state.busy = true;
+  updateStatus();
+  draw();
+  aiTakeTurn(state.phase, () => {
+    state.busy = false;
+    if (state.phase === "over") { updateStatus(); draw(); return; }
+    advancePhase();
   });
+}
+function advancePhase() {
+  state.selected = null;
+  state.reachable = new Map();
+  if (state.phase === "oda") {
+    state.phase = "imagawa";
+    checkAlarm();
+    startPhase();
+    return;
+  }
+  // 今川フェイズ終了＝ターン終了
+  if (state.turn >= SCENARIO.maxTurns) { judgeAtEnd(); return; }
+  state.turn++;
+  for (const u of state.units) { u.moved = false; u.attacked = false; }
+  state.phase = "oda";
+  if (isRainTurn()) log("☔ 激しい豪雨が戦場を叩く。今川軍は混乱している。");
+  checkAlarm();
+  startPhase();
+}
+function endPhase() {
+  if (state.phase !== state.player || state.busy) return;
+  advancePhase();
+}
+function kickoff() {
+  // ゲーム開始直後、先手（織田）がAIなら自動でそのフェイズを動かす
+  if (state.phase !== "over" && state.phase !== state.player) startPhase();
 }
 
 // ---------- 入力 ----------
@@ -359,20 +464,20 @@ function showUnitInfo(u, col, row) {
     el.innerHTML = `<strong>${u.name}</strong>（${u.side === "oda" ? "織田軍" : "今川軍"}）<br>` +
       `戦力 ${u.str} / ${u.maxStr}（攻撃時 ${attackStrength(u)}・防御時 ${defenseStrength(u)}）<br>` +
       `地形：${t.name}${camp ? `／本陣は現在「${state.alarmed ? "警戒" : "油断"}」` : ""}` +
-      (u.side === "oda" && state.phase === "oda" ? `<br>移動：${u.moved ? "済" : "可"}／攻撃：${u.attacked ? "済" : "可"}` : "");
+      (u.side === state.player && state.phase === state.player ? `<br>移動：${u.moved ? "済" : "可"}／攻撃：${u.attacked ? "済" : "可"}` : "");
   } else if (col !== undefined) {
     const t = terrainAt(col, row);
     el.innerHTML = `地形：${t.name}（移動コスト ${t.cost}、防御ボーナス +${t.def}）`;
   }
 }
 function onTap(ev) {
-  if (state.phase !== "oda" || state.busy) return;
+  if (state.phase !== state.player || state.busy) return;
   const hex = hexFromEvent(ev);
   if (!hex) return;
   const [c, r] = hex;
   const clicked = unitAt(c, r);
   const sel = state.selected;
-  if (sel && clicked && clicked.side === "imagawa" && !sel.attacked &&
+  if (sel && clicked && clicked.side !== state.player && !sel.attacked &&
       distance(sel.col, sel.row, c, r) === 1) {
     resolveCombat(sel, clicked);
     state.selected = state.units.find(u => u.id === sel.id && u.alive) ? sel : null;
@@ -388,12 +493,12 @@ function onTap(ev) {
     draw();
     return;
   }
-  if (clicked && clicked.side === "oda") {
+  if (clicked && clicked.side === state.player) {
     state.selected = clicked;
     state.reachable = (!clicked.moved && !clicked.attacked) ? computeReachable(clicked) : new Map();
     showUnitInfo(clicked);
   } else {
-    state.selected = clicked && clicked.side === "imagawa" ? state.selected : null;
+    state.selected = clicked && clicked.side !== state.player ? state.selected : null;
     if (!clicked) { state.reachable = new Map(); }
     showUnitInfo(clicked, c, r);
   }
@@ -657,7 +762,7 @@ function drawUnit(ctx, u, now) {
     renderPos.set(u.id, rp);
   }
   const x = rp.x, y = rp.y;
-  const done = state.phase === "oda" && u.side === "oda" && u.attacked;
+  const done = state.phase === state.player && u.side === state.player && u.attacked;
   ctx.save();
   ctx.globalAlpha = done ? 0.55 : 1;
   // 影
@@ -899,7 +1004,7 @@ function draw(now) {
   // 街道（滑らかな線）
   drawRoads(ctx);
   // 移動可能ヘックス
-  if (state.selected && state.phase === "oda") {
+  if (state.selected && state.phase === state.player) {
     for (const k of state.reachable.keys()) {
       const [c, r] = k.split(",").map(Number);
       const { x, y } = center(c, r);
@@ -928,10 +1033,10 @@ function draw(now) {
     ctx.fillStyle = "rgba(52,40,18,0.92)";
     ctx.fillText(lb.text, x, ty);
   }
-  // 攻撃可能な敵のハイライト（選択中ユニットに隣接する今川軍）
-  if (state.selected && state.phase === "oda" && state.selected.side === "oda" && !state.selected.attacked) {
+  // 攻撃可能な敵のハイライト（選択中ユニットに隣接する敵軍）
+  if (state.selected && state.phase === state.player && state.selected.side === state.player && !state.selected.attacked) {
     for (const u of state.units) {
-      if (!u.alive || u.side !== "imagawa") continue;
+      if (!u.alive || u.side === state.player) continue;
       if (distance(state.selected.col, state.selected.row, u.col, u.row) !== 1) continue;
       const { x, y } = center(u.col, u.row);
       ctx.beginPath();
@@ -965,16 +1070,19 @@ function draw(now) {
 // ---------- 起動 ----------
 document.getElementById("map").addEventListener("click", onTap);
 document.getElementById("end-phase").addEventListener("click", endPhase);
-document.getElementById("restart").addEventListener("click", () => { initGame(); showUnitInfo(null); });
+document.getElementById("restart").addEventListener("click", () => { initGame(); showUnitInfo(null); kickoff(); });
 document.getElementById("again").addEventListener("click", () => {
   document.getElementById("end-overlay").classList.add("hidden");
   initGame();
   showUnitInfo(null);
+  kickoff();
 });
 document.getElementById("start-game").addEventListener("click", () => {
   state.mode = document.querySelector('input[name="mode"]:checked').value;
+  state.player = document.querySelector('input[name="side"]:checked').value;
   document.getElementById("start-overlay").style.display = "none";
   initGame();
+  kickoff();
 });
 initGame();
 requestAnimationFrame(animate);
