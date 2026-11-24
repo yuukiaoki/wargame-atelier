@@ -1,0 +1,194 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  background: linear-gradient(180deg, #eef0e2 0%, #e6e7cf 100%);
+  color: #262a1c;
+  min-height: 100vh;
+}
+header {
+  padding: 12px 16px 6px;
+}
+header h1 {
+  margin: 0;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-size: 25px;
+  letter-spacing: 0.12em;
+  color: #26324a;
+}
+header h1::before {
+  content: "戦";
+  display: inline-block;
+  background: #1d4e89;
+  color: #fdf6d8;
+  font-size: 15px;
+  letter-spacing: 0;
+  padding: 3px 5px;
+  border-radius: 3px;
+  margin-right: 10px;
+  vertical-align: 3px;
+  box-shadow: 0 1px 2px rgba(30, 40, 60, 0.35);
+}
+#status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  font-size: 14px;
+  margin-top: 7px;
+}
+#status-bar span {
+  background: #fdfdf4;
+  border: 1px solid #a9ad7e;
+  border-radius: 6px;
+  padding: 2px 10px;
+  box-shadow: 0 1px 2px rgba(70, 75, 40, 0.12);
+}
+#status-bar span:empty { display: none; }
+main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 16px 20px;
+  align-items: flex-start;
+}
+#map-wrap {
+  flex: 1 1 700px;
+  max-width: 1130px;
+}
+canvas#map {
+  width: 100%;
+  height: auto;
+  background: #e9e2c8;
+  border: 2px solid #6d7a4a;
+  border-radius: 6px;
+  box-shadow: 0 3px 10px rgba(60, 65, 30, 0.25);
+  touch-action: manipulation;
+}
+#panel {
+  flex: 1 1 260px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#panel section {
+  background: #fdfdf4;
+  border: 1px solid #a9ad7e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 3px rgba(70, 75, 40, 0.14);
+}
+#panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  border-left: 4px solid #1d4e89;
+  padding-left: 8px;
+}
+#unit-detail, #storm-info { margin: 0; font-size: 14px; line-height: 1.6; }
+#controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+button {
+  font-size: 15px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #173d68;
+  background: linear-gradient(180deg, #2a63a5, #1d4e89);
+  color: #fdf6d8;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(30, 45, 20, 0.25);
+}
+button:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(30, 45, 20, 0.25); }
+button#restart, button#again, button#siege-btn {
+  background: linear-gradient(180deg, #6d8091, #54687c);
+  border-color: #42536a;
+}
+button#storm-btn {
+  background: linear-gradient(180deg, #c0452f, #a33327);
+  border-color: #7e2a1e;
+}
+button:disabled { opacity: 0.45; cursor: default; transform: none; }
+button#sound-toggle {
+  margin-top: 8px;
+  font-size: 13px;
+  padding: 5px 12px;
+  background: linear-gradient(180deg, #6d8091, #54687c);
+  border-color: #42536a;
+  color: #fff8ea;
+}
+#legend ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+#legend li { margin: 3px 0; }
+.sw {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 1px solid #77683f;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.sw.plain { background: #cfd2a0; }
+.sw.river { background: #a9c6de; }
+.sw.city { background: #cbb98d; }
+.sw.fortress { background: #6d5b39; }
+.sw.sea { background: #7fa8c9; }
+.note { font-size: 12px; color: #5c6247; line-height: 1.5; }
+#log {
+  height: 200px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  background: #fbfbef;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+#log p { margin: 0; padding: 2px 2px 3px; border-bottom: 1px dashed rgba(120, 125, 80, 0.25); }
+#log p:last-child { border-bottom: none; }
+#start-overlay, #end-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(35, 40, 26, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 10;
+}
+#end-overlay.hidden { display: none; }
+.card {
+  background: linear-gradient(180deg, #fdfdf4, #f2f2dc);
+  border: 2px solid #6d7a4a;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(25, 30, 10, 0.45);
+  max-width: 560px;
+  width: 100%;
+  padding: 22px 24px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.card h2 {
+  margin-top: 0;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid #a9ad7e;
+  padding-bottom: 8px;
+}
+.card h3 {
+  font-size: 15px;
+  margin: 14px 0 4px;
+}
+.card label {
+  display: block;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #d5d8b4;
+  border-radius: 6px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.45);
+}
+.card label:hover { background: #eef0da; }
+.card label:has(input:checked) {
+  background: #dfe8f5;
+  border-color: #1d4e89;
+}
+.card button { margin-top: 12px; font-size: 16px; padding: 10px 22px; }

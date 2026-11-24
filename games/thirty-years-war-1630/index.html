@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>三十年戦争 1630–32 — 作戦級ウォーゲーム試作</title>
+<link rel="stylesheet" href="css/style.css?v=20261124-1">
+</head>
+<body>
+<header>
+  <h1>三十年戦争 1630–32</h1>
+  <div id="status-bar">
+    <span id="turn-info">1630年第3四半期</span>
+    <span id="phase-info">スウェーデン軍 移動</span>
+    <span id="vp-info"></span>
+    <span id="event-info"></span>
+  </div>
+  <button id="sound-toggle" type="button">🔊 音オン</button>
+</header>
+
+<main>
+  <div id="map-wrap">
+    <canvas id="map" width="1112" height="654"></canvas>
+  </div>
+  <aside id="panel">
+    <section id="unit-info">
+      <h2>軍・都市情報</h2>
+      <p id="unit-detail">軍をタップすると情報が表示されます。自軍の軍を選ぶと移動できるヘックスが光ります。敵軍のいるヘックスへ入ると、その後の戦闘ステージで野戦になります。</p>
+    </section>
+    <section id="storm-box" style="display:none">
+      <h2>強襲か包囲か</h2>
+      <p id="storm-info"></p>
+      <div class="btn-row">
+        <button id="storm-btn" type="button">強襲する</button>
+        <button id="siege-btn" type="button">包囲を続ける</button>
+      </div>
+    </section>
+    <section id="controls">
+      <button id="end-phase" type="button">移動を終える</button>
+      <button id="restart" type="button">最初から</button>
+    </section>
+    <section id="howto">
+      <h2>進み方</h2>
+      <p class="note">各ターンは「スウェーデン移動 → 皇帝軍の強行軍（反応）→ 戦闘 → 皇帝軍移動 → スウェーデン軍の強行軍 → 戦闘」の順に進みます。移動力は軍ごとに 1d6＋指揮能力で決まります。敵に接した軍は、相手の移動の後に「強行軍」で離脱できます（損耗の恐れあり）。詳しいルールは RULEBOOK.md を参照。</p>
+    </section>
+    <section id="legend">
+      <h2>地形</h2>
+      <ul>
+        <li><span class="sw plain"></span>平地</li>
+        <li><span class="sw river"></span>河川（移動+1、防御+2）</li>
+        <li><span class="sw city"></span>都市（防御+2）</li>
+        <li><span class="sw fortress"></span>要塞（防御+4）</li>
+        <li><span class="sw sea"></span>海（進入不可）</li>
+      </ul>
+      <p class="note">都市・要塞には守備隊がいます。支配は守備隊を壊滅させて自軍だけが残ったときに移ります。VP＝支配都市の点数 − 累積損害。</p>
+    </section>
+    <section id="log-wrap">
+      <h2>戦闘ログ</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+
+<div id="start-overlay">
+  <div class="card">
+    <h2>三十年戦争 1630–32 — 試作版</h2>
+    <p>1630年6月、スウェーデン王グスタフ・アドルフがドイツ北岸に上陸した。皇帝軍の名将ティリーが北上し、両軍はドイツ全域を舞台に2年半の戦いを繰り広げる。マクデブルクの惨事、ブライテンフェルト、リュッツェン――史実の分岐点を、作戦級のヘックスゲームで追う。</p>
+    <p><strong>目的</strong>：10ターン（1632年末まで）終了時に、支配都市のVPから累積損害を引いた得点が高い側の勝利。グスタフ・アドルフが戦死すれば、その場で皇帝側の勝利（サドンデス）。</p>
+    <h3>指揮する軍</h3>
+    <label><input type="radio" name="side" value="sweden" checked> スウェーデン軍でプレイ — 北岸の橋頭堡から南下し、皇帝軍を打ち破る</label>
+    <label><input type="radio" name="side" value="imperial"> 皇帝・カトリック同盟軍でプレイ — ティリーとヴァレンシュタインでスウェーデン軍を北へ追い返す</label>
+    <h3>システムの要点</h3>
+    <p class="note">軍は「リーダー＋戦力ポイント（SP）」。移動力は軍ごとにサイコロ＋指揮能力で決まります。相手の移動の後には、接敵した軍が「強行軍」で逃げる機会があります。野戦を強要したければ、相手のターンに敵のヘックスへ踏み込むのがコツです。要塞は強襲のほか、包囲して時間をかけて落とすこともできます。</p>
+    <h3>音</h3>
+    <label><input type="checkbox" id="sound-check" checked> 効果音を出す（開始後も画面上の「🔊 音オン／🔇 音オフ」ボタンで切り替えできます）</label>
+    <button id="start-game" type="button">ゲーム開始</button>
+    <p class="note">典拠と設計方針は README の設計ノートに記載。編成・戦力値はゲーム上の抽象化です。</p>
+  </div>
+</div>
+
+<div id="end-overlay" class="hidden">
+  <div class="card">
+    <h2 id="end-title"></h2>
+    <p id="end-text"></p>
+    <button id="again" type="button">もう一度</button>
+  </div>
+</div>
+
+<script src="js/scenario.js?v=20261124-1"></script>
+<script src="js/sound.js?v=20261124-1"></script>
+<script src="js/game.js?v=20261124-1"></script>
+</body>
+</html>

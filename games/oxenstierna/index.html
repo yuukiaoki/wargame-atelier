@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>宰相 — オクセンシェルナと三十年戦争 1633–44（第1部）</title>
+<link rel="stylesheet" href="css/style.css?v=20261124-1">
+</head>
+<body>
+<header>
+  <h1>宰相 — 第1部 1633–44</h1>
+  <div id="status-bar">
+    <span id="year-info">1633年</span>
+    <span id="phase-info">意思決定フェイズ</span>
+    <span id="treasury-info">国庫 0</span>
+  </div>
+  <button id="sound-toggle" type="button">🔊 音オン</button>
+</header>
+
+<main>
+  <div id="map-wrap">
+    <div id="map"></div>
+    <section id="area-box">
+      <h2>方面情報</h2>
+      <p id="area-info">エリアをタップすると情報が表示されます。</p>
+    </section>
+  </div>
+  <aside id="panel">
+    <section id="resources-box">
+      <h2>国庫と政情</h2>
+      <div id="resources"></div>
+    </section>
+    <section id="reports-box">
+      <h2>将軍たちからの報告</h2>
+      <div id="reports"></div>
+    </section>
+    <section id="decision-box">
+      <h2>意思決定</h2>
+      <div id="decision-area"></div>
+    </section>
+    <section id="enemy-box">
+      <h2>敵軍の情勢</h2>
+      <div id="enemy-info"></div>
+    </section>
+    <section id="controls">
+      <button id="restart" type="button">最初から</button>
+    </section>
+    <section id="log-wrap">
+      <h2>記録</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+
+<div id="start-overlay">
+  <div class="card">
+    <h2>宰相 — オクセンシェルナと三十年戦争</h2>
+    <p>1632年11月、リュッツェンでグスタフ・アドルフ王が戦死した。あなたはスウェーデンの国家宰相アクセル・オクセンシェルナとなり、後見政府を率いて<strong>1633年から1644年までの12年間</strong>、戦争と国家の運営を担います（第1部）。</p>
+    <p><strong>目的</strong>：ドイツの戦争を続けながら、本国を破綻させず、軍を温存し、諸侯と評議会をまとめ、1644年のクリスティーナ女王親政までを乗り切ること。終わりに、領土・財政・軍・信任などから総合評価が出ます（結果は第2部へ引き継ぎ保存されます）。</p>
+    <h3>遊び方</h3>
+    <p>毎年、将軍たちへの<strong>資金配分</strong>と<strong>方針</strong>（進撃／防衛／現地調達／本国帰還）を決め、外交・国内政策を選んでから「戦争を解決する」を押します。金は本国税収・関税・フランス補助金・ドイツの分担金から得ますが、どれも代償を伴います。本国に課せば民心が、現地調達を強いれば諸侯の結束が、王領地を売れば将来の収入が削られます。</p>
+    <p>敗北は戦場よりも、財政破綻・軍の壊滅・信任の喪失によって訪れます。</p>
+    <h3>音</h3>
+    <label><input type="checkbox" id="sound-check" checked> 効果音を出す（開始後も画面上の「🔊 音オン／🔇 音オフ」ボタンで切り替えできます）</label>
+    <button id="start-game" type="button">ゲーム開始</button>
+    <p class="note">設計の前提と典拠は DESIGN.md と README の設計ノートに記載。数値はゲーム上の抽象化です。</p>
+  </div>
+</div>
+
+<div id="event-overlay" class="hidden">
+  <div class="card">
+    <h2 id="event-title"></h2>
+    <p id="event-text"></p>
+    <div id="event-choices"></div>
+  </div>
+</div>
+
+<div id="end-overlay" class="hidden">
+  <div class="card">
+    <h2 id="end-title"></h2>
+    <div id="end-text"></div>
+    <button id="again" type="button">もう一度</button>
+  </div>
+</div>
+
+<script src="js/scenario.js?v=20261124-1"></script>
+<script src="js/sound.js?v=20261124-1"></script>
+<script src="js/game.js?v=20261124-1"></script>
+</body>
+</html>
